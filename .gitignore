@@ -1,2 +1,7 @@
 
 venv/Venv_Freeze_PO.ps1
+pm_modules/__pycache__/
+pm_modules/analysis/__pycache__/
+pm_modules/estimation/__pycache__/
+pm_modules/optimization/__pycache__/
+pm_modules/util/__pycache__/
