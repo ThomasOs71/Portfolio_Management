@@ -1,0 +1,5 @@
+Potentielle Weitere Pakete
+
+# Factormodelle (Linear)
+# Regime-Modelle
+# Modellierung der Parameter über: Garch / Arch // VAR // etc.

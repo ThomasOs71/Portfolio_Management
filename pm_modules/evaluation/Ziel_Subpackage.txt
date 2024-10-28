@@ -1,0 +1,21 @@
+Ziel:
+Sämtliche Elemente zur Evaluation des resultierenden Portfolios.
+Einschätzung des Portfolio (ex-Ante)
+
+Umfasst:
+- Standard-Kennzahlen zur historischen (risk-adjusted) Performance
+	- Pure Return 
+	- Sharpe
+	- Sortino
+	- Omega
+	- etc
+
+- Kennzahlen zur Diversification:
+	- Gini
+	- Herfindahl
+	- Shannon Entropy
+
+- Stress-Testing
+	- Copula-Marginal Approach
+	
+- Etc.
