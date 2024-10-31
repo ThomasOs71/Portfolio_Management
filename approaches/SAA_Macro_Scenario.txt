@@ -1,0 +1,16 @@
+1) Determine: Multiple Macro Scenarios of the Future
+
+2) Determine Probability
+[Off-Topic: Auch Trigger, die die Wsk erhöhen, senken...qualitativ]
+
+3) Generate Asst Class Attractiveness for each Scenario
+
+[ Zusatz 2b: -> GGf. über Einfluss auf die Ökonomie und Faktormodelle gehen]
+
+4) Generate Asset Class Joint Distribution
+
+5) Generate Bayesian Approach to Shrinke results against "Normal World"
+
+6) Optimize
+
+7) Evaluatin

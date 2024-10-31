@@ -1,0 +1,7 @@
+1) Set Risk Budgets
+
+2) Set Joint Distribution
+
+3) Generate RP-Portfolio
+
+4) Generate MV Portfolio with Target Return, which has a maximal Tracking Error of x%

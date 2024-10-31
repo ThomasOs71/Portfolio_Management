@@ -1,0 +1,10 @@
+
+                               1) Determine Target Return
+
+2) Choose Growth Asset
+
+3) Optimize:
+	Vary the Risk Contribution [Lambda_0, Lambda_1]
+
+4) Select the PF with the corresponding Target Return
+	
