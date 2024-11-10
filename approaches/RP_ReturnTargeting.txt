@@ -1,5 +1,4 @@
-
-                               1) Determine Target Return
+1) Determine Target Return
 
 2) Choose Growth Asset
 

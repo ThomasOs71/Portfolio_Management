@@ -4,19 +4,8 @@ Created on Sat Aug 17 21:45:11 2024
 
 @author: Thomas
 
-'''
 Verfahren -> Minimum Relative Entropy
 Verfahren #2 -> Kinlaw
-'''
-
-
-
-
-
-
-
-
-
 
 """
 
