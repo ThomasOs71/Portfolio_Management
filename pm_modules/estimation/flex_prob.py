@@ -8,6 +8,16 @@ Created on Sat Aug 17 23:04:51 2024
     # Modules to generate Flexible Probability Distributions
 
 
+Offene Punkte:
+    1) Allgemeine Formulierung von MRE
+    2) Conditional_FP -> Prüfen
+    3) Partial Sample Regression
+    4) Evaluationsfunctionen über die Sensitivitäten der Flex. Prop
+    
+Quellen:
+https://www.arpm.co/lab/quasi-bayesian-flexible-probabilities.html
+https://www.arpm.co/lab/views-processing.html
+https://www.arpm.co/lab/inference-mc-variational.html
 """
 
 # %% Packages
@@ -16,8 +26,112 @@ from bisect import bisect_right
 from bisect import bisect_left
 from scipy import stats
 import pandas as pd
+from scipy.optimize import minimize
+from scipy.special import logsumexp
+from scipy.sparse import eye
+from statsmodels.stats.weightstats import DescrStatsW
+
+
 
 # %% Support Functions
+def min_rel_entropy_sp(p_pri, 
+                       z_ineq=None, 
+                       mu_view_ineq=None, 
+                       z_eq=None, 
+                       mu_view_eq=None, 
+                       normalize=True):
+    
+    """This function minimizes the relative entropy subject to inequality and equality constraints 
+       and returns the updated probabilities
+
+    Note
+    ----
+        The constraints :math:`p_j \geq 0` and :math:`\sum p_j = 1` are set automatically.
+
+    Parameters
+    ----------
+        p_pri : array, shape(j_bar,)
+        z_ineq : array, shape(l_bar, j_bar), optional
+        mu_view_ineq : array, shape(l_bar,), optional
+        z_eq : array, shape(m_bar, j_bar), optional
+        mu_view_eq : array, shape(m_bar,), optional
+        normalize : bool, optional
+
+    Returns
+    -------
+        p_bar : array, shape(j_bar,)
+    """
+
+    # if there is no constraint, then just return p_pri
+    if z_ineq is None and z_eq is None:
+        return p_pri
+    # no inequality constraints
+    elif z_ineq is None:
+        z = z_eq
+        mu_view = mu_view_eq
+        l_bar = 0
+        m_bar = len(mu_view_eq)
+    # no equality constraints
+    elif z_eq is None:
+        z = z_ineq
+        mu_view = mu_view_ineq
+        l_bar = len(mu_view_ineq)
+        m_bar = 0
+    else:
+        # concatenate constraints
+        z = np.concatenate((z_ineq, z_eq), axis=0)
+        mu_view = np.concatenate((mu_view_ineq, mu_view_eq), axis=0)
+        l_bar = len(mu_view_ineq)
+        m_bar = len(mu_view_eq)
+        
+    # normalize constraints
+    if normalize is True:
+        m_z = DescrStatsW(z.T).mean 
+        s2_z = DescrStatsW(z.T).cov 
+        s_z = np.sqrt(np.diag(s2_z))
+        z = ((z.T - m_z)/s_z).T
+        mu_view = (mu_view - m_z)/s_z
+
+    # pdf of a discrete exponential family
+    def exp_family(theta):
+        x = theta@z + np.log(p_pri)
+        phi = logsumexp(x)
+        p = np.exp(x - phi)
+        p[p < 1e-32] = 1e-32
+        p = p/np.sum(p)
+        return p
+
+    # minus dual Lagrangian
+    def lagrangian(theta):
+        x = theta@z + np.log(p_pri)
+        phi = logsumexp(x)  # stable computation of log sum exp
+        return phi - theta@mu_view
+
+    def gradient(theta):
+        return z@exp_family(theta) - mu_view
+
+    def hessian(theta):
+        p = exp_family(theta)
+        z_bar = z.T - z@p
+        return (z_bar.T*p)@z_bar
+
+    # compute optimal lagrange multipliers and posterior probabilities
+    k_bar = l_bar + m_bar  # dimension of lagrange dual problem
+    theta0 = np.zeros(k_bar)  # intial value
+    # if no constraints, then perform newton conjugate gradient
+    # trust-region algorithm
+    if l_bar == 0:
+        options = {'gtol': 1e-10}
+        res = minimize(lagrangian, theta0, method='trust-ncg', jac=gradient, hess=hessian, options=options)
+    # otherwise perform sequential least squares programming
+    else:
+        options = {'ftol': 1e-10, 'disp': False, 'maxiter': 1000}
+        alpha = -eye(l_bar, k_bar)
+        constraints = {'type': 'ineq', 'fun': lambda theta: alpha@theta}
+        res = minimize(lagrangian, theta0, method='SLSQP', jac=gradient, constraints=constraints, options=options)
+
+    return np.squeeze(exp_family(res['x']))
+
 
 def quantile_smooth(c_bar, 
                     x, 
@@ -73,12 +187,20 @@ def scoring():
     return None
 
 
+# %% Basic Functions for Flexible Probs
 
+def mean_sp():
+    return None
+
+
+def cov_sp():
+    return None
 
 
 
 
 # %% Functions for Determining Flexible Probabilities
+
 
 ### Time Conditioning
 def time_conditioning_exponentional_fp(t_bar:"int",
@@ -148,25 +270,33 @@ def time_conditioning_linear_fp(t_bar:"int")-> 'np.array(t_bar,1)':
 geht state_conditioning_crisp_fp für multivariate?
 '''
 
-def state_conditioning_crisp_fp(z, 
-                                z_star, 
-                                alpha):
+def state_conditioning_crisp_fp(z: "np.array(t_bar,1)", 
+                                z_star: "np.array(k_bar,)", 
+                                alpha: "float") -> "tuple(np.array(t_bar,1), np.array(k_bar,), np.array(k_bar,)":
+    
     """
     Ziel:
         This function computes crisp probabilities based on a dataset and a set of target values, 
         ensuring that the probabilities adhere to specified alpha thresholds.
+        
+        Observations within the "Confidence-Band" (CDF(z_star) +/- (alpha/2) have identical probabilities.
+        Observations outside the "Confidence-Band" have a probability of zero.
 
     Parameters
-        z : array, shape (t_bar, )
+        z : array, shape (t_bar, 1)
         z_star : array, shape (k_bar, )
         alpha : scalar
 
     Returns:
         p : array, shape (t_bar,k_bar) if k_bar>1 or (t_bar,) for k_bar==1
-        z_lb : array, shape (k_bar,)
-        z_ub : array, shape (k_bar,)
+        z_lb : array, shape (k_bar,)  Lower Bound of original Array Z
+        z_ub : array, shape (k_bar,)  Upper Bound of original Array Z
     """
+    # Transform z from (array,1) to (array,)
+    if z.ndim > 1:
+        z = z.squeeze()
 
+    # Get Basic Information about z and z_star
     z_star = np.atleast_1d(z_star)
     t_bar = z.shape[0]
     k_bar = z_star.shape[0]
@@ -221,37 +351,147 @@ def state_conditioning_crisp_fp(z,
         pp[k, (z <= z_ub[k])&(z >= z_lb[k])] = 1
         p[k, :] = pp[k, :]/np.sum(pp[k, :])
 
-    return np.squeeze(p.T), np.squeeze(z_lb), np.squeeze(z_ub)
+    return p.T, np.squeeze(z_lb), np.squeeze(z_ub)
     
 
-def state_conditioning_smooth_kernel_fp():
+def state_conditioning_smooth_kernel_fp(z: "np.array(t_bar,n_bar)", 
+                                        z_star: "np.array(k_bar,1)", 
+                                        h: "np.array(n_bar,n_bar)",
+                                        gamma: "int" = 2) -> "np.array(t_bar,1)":
+    """
+    Ziel:
+        This Function calculates Smooth Kernel Probabilities.
+        The closer values in z are to z_star, the higher the corresponding probability
+        
+        The Choice of the Kernel is based on:
+            1) gamma: gamma = 1 -> Exp. Kernel, gamma = 2 -> Gaussian Kernel
+            2) Number of Variables
+            3) Z-Star - Critical Values under Evaluation
+            4) h: Bandwith-Matrix
+        ! For the Multivariate Case n_bar > 1, only the Gaussian Kernel is used !
+        
+
+    Parameters
+        z : array, shape (t_bar, n_bar) - Variables determining the Probabilities
+        z_star : array, shape (k_bar, 1) - Criticial Values 
+        h: array, shape (n_bar, n_bar) - Bandwith Matrix
+        gamma : integer, [0,1] - Determines the Kernel (1-> Exp, 2 -> Gaussian)
+
+    Returns:
+        p : array, shape (t_bar,1)
+        
+    Notes:
+        The Variables in z should be stationary.
+        
+        !!! Bitte nochmal prüfen !!!
+    """                                     
+
+    ## Get Basic Stats
+    n_bar = z.shape[1]
     
-    ### Univariate
-    ########## inputs (you can change them) ##########
-    z_star = 1  # target value
-    h = 0.2  # kernel bandwidth
-    gamma = 2  # kernel type parameter
-    ##################################################
-    
-    p_smooth = exp(-(abs(vix_score - z_star)/h)**gamma)  # smooth kernel probabilities
-    p_smooth = p_smooth/sum(p_smooth)  # rescaled probabilities
-    
-    ### Multivaraite
-    # Das muss dann mit Mahalanobis bauen
-    
+    ## Checks
+    # Vergleich z und z_star für n_bar
+    assert z.shape[1] == z_star.shape[1], "Anzahl der Variablen zwischen z und z_star nicht identisch."
+    assert h.shape[0] == h.shape[1], "Falsche Dimension in Bandwith Matrix."
+    assert z.shape[1] == h.shape[1], "Anzahl der Variablen zwischen z und Bandwith Matrix nicht identisch."    
+    assert (h.T == h).all(), "Bandwith Matrix ist nicht symmetrisch."
+                                             
+    ## Univariate Case
+    if n_bar == 1:
+        p_smooth = np.exp(-(abs(z - z_star)/h)**gamma)  # smooth kernel probabilities
+        p_smooth = p_smooth/sum(p_smooth)  # rescaled probabilities
     
     
+    ## Multivariate Case
+    if n_bar > 1:
+        print("Multivariate Z: gamma set to 2")
+        p_smooth = np.exp(-np.diag((z -z_star)@np.linalg.inv(h)@(z -z_star).T))
+        p_smooth = p_smooth / sum(p_smooth)
+        '''
+        Ergebnis identisch zu Schleifen-Formulierung
+        '''
+    
+    return p_smooth.reshape(-1,1)
+    
+
+### Partial Sample Regressoin
+def partial_sample_regression():
     return None
-
-
-
 
 
 
 ### General Conditioning
-def minium_relative_entropy_fp():
+# !!! To Do !!! -> Funktioniert noch nicht!
+def conditional_fp(z: "np.array(t_bar, 1)", 
+                   z_star: "np.array(k_bar,1)", 
+                   alpha: "float", 
+                   p_prior: "np.array(t_bar, 1)") -> "np.array(t_bar,1)":
+        
+    """
+    Ziel:
+        This function calculates conditional flexible probabilities 
+        based on a given dataset and a reference set of values. 
+        Kombiniert Crisp Probabilities mit einem Prior (z.B. Exponentional)
 
-    return None
+    Parameters
+        z : array, shape (t_bar, 1 )
+        z_star : array, shape (k_bar, 1 )
+        alpha : scalar
+        p_prior : array, shape (t_bar, 1 )
+
+    Returns
+        p : array, shape (t_bar, k_bar) if k_bar > 1 or (t_bar, 1) for k_bar=1
+
+    Notes:
+
+    """
+    # Change Dimension of z
+    if z.ndim == 1:
+        z = z.reshape(-1,1)
+    
+    z_star = np.atleast_1d(z_star)
+
+    t_bar = z.shape[0]
+    k_bar = z_star.shape[0]
+
+    # compute crisp probabilities
+    p_crisp, _, _ = state_conditioning_crisp_fp(z, z_star, alpha)
+    p_crisp = p_crisp.T
+    p_crisp[p_crisp == 0] = 10**-20
+    
+    if k_bar == 1:
+        p_crisp = p_crisp/np.sum(p_crisp)
+        p = np.zeros((k_bar, t_bar))
+        # moments
+        m_z = p_crisp@z
+        s2_z = p_crisp@(z**2) - m_z**2
+        # constraints
+        a_ineq = np.atleast_2d(z**2)
+        b_ineq = np.atleast_1d((m_z**2) + s2_z)
+        a_eq = np.array([z])
+        b_eq = np.array([m_z])
+        # output
+        p = min_rel_entropy_sp(p_prior, a_ineq, b_ineq, a_eq, b_eq)
+    else:
+        for k in range(k_bar):
+            p_crisp[k, :] = p_crisp[k, :]/np.sum(p_crisp[k, :])
+
+        # compute conditional flexible probabilities
+        p = np.zeros((k_bar, t_bar))
+        for k in range(k_bar):
+            # moments
+            m_z = p_crisp[k, :]@z
+            s2_z = p_crisp[k, :]@(z**2) - m_z**2
+            # constraints
+            a_ineq = np.atleast_2d(z**2)
+            b_ineq = np.atleast_1d((m_z**2) + s2_z)
+            a_eq = np.array([z])
+            b_eq = np.array([m_z])
+            # output
+            p[k, :] = min_rel_entropy_sp(p_prior, a_ineq, b_ineq, a_eq, b_eq)
+
+    return p.T
+
 
 
 
@@ -289,32 +529,5 @@ def effective_number_of_scenarios(p_array:'np.array(t,1)',
     return ens
 
 
-
-
-# %% TESTING
-
-import matplotlib.pyplot as plt
-
-
-
-t = 100
-a = time_conditioning_exponentional_fp(t, 100)
-
-plt.plot(a)
-
-b = time_conditioning_linear_fp(100)
-
-
-plt.plot(b)
-
-np.sum(a)
-effective_number_of_scenarios(b,absolut=True)
-
-
-
-
-
-
-# %% Entwicklung
 
     
