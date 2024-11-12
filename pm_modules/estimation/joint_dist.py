@@ -11,7 +11,6 @@ Verfahren #2 -> Kinlaw
 
 
 # %% Packages (External)
-
 from numpy import arange, array, zeros, eye, ones, sqrt, r_,\
                   linspace, median, sum, where, diag, block
 from numpy.random import lognormal
@@ -19,39 +18,36 @@ from numpy.linalg import eig
 from scipy.stats import chi2
 from cvxopt.solvers import options, socp
 from cvxopt import matrix
-from seaborn import lineplot, scatterplot, color_palette
 from matplotlib.pyplot import show, fill_between
 
 import numpy as np
 from scipy import stats
 from scipy import special
 
-
-
-
 # %% Support Function
 
 ### Sigma2 <-> Covariance: Student t
-def cov2sig2_t(cov: "np.array(n x n)", 
-               nu: "int, DoF") -> "np.array (n x n)":
+def cov2sig2_t(cov: "np.array(n,n)", 
+               nu: int) -> "np.array (n,n)":
     '''
     Transforms a Covariance into a Sigma2 Dispersion for a Student t with Nu Dof.
     '''
     sigma2 = cov*(nu - 2.)/nu
     return sigma2
     
-def sig2tocov_t(sigma2: "np.array(n x n)", 
-                nu: "int, DoF") -> "np.array (n x n)" :
+def sig2tocov_t(sigma2: "np.array (n,n)", 
+                nu: int) -> "np.array (n,n)" :
     '''
     Transforms a Sigma2 Dispersion for a Student t with NU Dof into a Covariance.
     '''
     cov = sigma2*nu/(nu - 2.)
     return cov
 
-
 ### Sample Mean / Dispersion
-def loc_disp_fp(eps: "np.array(t x n)",
-                p: "np.array(t,)"):
+def loc_disp_fp(eps: "np.array(t,n)",
+                p: "np.array(t,1)") -> "np.array(n,), np.array(n,n)":
+    if p.ndim == 2:
+        p = p.squeeze()
     mu = p@eps
     sigma2 = ((eps - mu).T*p)@(eps - mu)
     return mu, sigma2
@@ -61,14 +57,16 @@ def mahab_distance():
     return None
 
 
-# %% Robust Optimzation
+# %% Robust Optimzation - Student t
 
-def fit_locdisp_mlfp(eps, *, 
-                     p = None, 
-                     nu = 1000, 
-                     threshold = 1e-3, 
-                     maxiter = 1000, 
-                     print_iter = False):
+### Kernroutine
+def fit_locdisp_mlfp(eps: "np.array((t_bar, i_bar)", 
+                     *, 
+                     p: "np.array(t_bar,1)" = None, 
+                     nu: "int" = 1000, 
+                     threshold: float = 1e-3, 
+                     maxiter: int = 1000, 
+                     print_iter: bool = False) -> dict:
     
     """
     This function estimates the location and Dispersion parameters of
@@ -77,7 +75,7 @@ def fit_locdisp_mlfp(eps, *,
     Parameters
     ----------
         eps : array, shape (t_bar, i_bar)
-        p : array, shape (t_bar,), optional
+        p : array, shape (t_bar, 1), optional
         nu: float, optional
         threshold : float, optional
         maxiter : int, optional
@@ -86,8 +84,10 @@ def fit_locdisp_mlfp(eps, *,
 
     Returns
     -------
-        mu : array, shape (i_bar,)
+        mu : array, shape (i_bar, 1)
         sigma2 : array, shape (i_bar, i_bar)
+        nu: int
+        loglf: float, loglikelihood
     """
     ## Preliminary Data Check
     # Check Dimension of EPS -> t x n
@@ -153,21 +153,48 @@ def fit_locdisp_mlfp(eps, *,
             break
     
     # Sumup Results:
-    result_dict = {"mu": mu,
+    result_dict = {"mu": mu.reshape(-1,1),
                    "sigma2":sigma2,
-                   "nu":nu,
-                   "loglf":p@lf}
+                   "nu":int(nu),
+                   "loglf":float(p@lf)}
             
     return result_dict
 
 
-def fit_locdisp_mlfp_nu(eps, *, 
-                     p = None, 
-                     nu_min = 4,
-                     nu_max = 100, 
-                     threshold = 1e-3, 
-                     maxiter = 1000, 
-                     print_iter = False):
+### Optimierung für mehrere DoF
+def fit_locdisp_mlfp_nu(eps: "np.array(t_bar,i_bar)", 
+                        *, 
+                        p: "np.array(t_bar, 1)" = None, 
+                        nu_min: int = 4,
+                        nu_max: int = 100, 
+                        threshold: float = 1e-3, 
+                        maxiter: int = 1000, 
+                        print_iter: bool = False) -> dict:
+    
+    """
+    Ziel:
+        This function estimates the location and Dispersion parameters of
+        a multivariate time series using the maximum likelihood method assuming a Student t Distribution.
+        Multiple Estimations are performed assuming different DoFs.
+
+    Parameters
+        eps : array, shape (t_bar, i_bar)
+        p : array, shape (t_bar,), optional
+        nu: float, optional
+        threshold : float, optional
+        maxiter : int, optional
+        print_iter : bool
+
+
+    Returns
+    -------
+        dict: Keys are the DoF
+              Each Entry contains an dict with:
+                  mu : array, shape (i_bar,1)
+                  sigma2 : array, shape (i_bar, i_bar)
+                  nu: int
+                  loglf: float, loglikelihood
+    """
     
     ### Define Grid of Nu
     nu_grid = arange(nu_min,nu_max)
@@ -176,32 +203,51 @@ def fit_locdisp_mlfp_nu(eps, *,
     dict_results = {}
 
     for nu_ in nu_grid:
-        dict_results[nu_] = fit_locdisp_mlfp(eps, 
+        dict_results[int(nu_)] = fit_locdisp_mlfp(eps, 
                                         p = p, 
                                         nu = nu_, 
                                         threshold = 1e-3, 
                                         maxiter = 1000, 
                                         print_iter = False)     
-        
     return dict_results
 
+
+
+
 def fit_locdisp_mlfp_nu_best(dict_results):
+    '''
+    Ziel:
+        Find best Approximation of SPD by Multivariate Studend t.
+        Previous Estimation is performed by fit_locdisp_mlfp_nu
+    Parameter:
+        dict_results: dict, contains results from fit_locdisp_mlfp_nu
+    Return:
+        dict: Contains parameter of best estimate:
+            mu : array, shape (i_bar,1)
+            sigma2 : array, shape (i_bar, i_bar)
+            nu: int
+            loglf: float, loglikelihood
+    '''
     
     min_loglf = -100000
     best_nu = None
     
     for i in dict_results.keys():
         if dict_results[i]["loglf"] > min_loglf:
-            best_nu = dict_results[i]["nu"]
+            best_nu = int(dict_results[i]["nu"])
             min_loglf = dict_results[i]["loglf"]
 
-    return dict_results[i]["mu"], dict_results[i]["sigma2"]
+    return dict_results[best_nu]
 
 
 
 
 # %% Robust Optimization - with missing data
 
+### Randomly Missing Data
+
+
+### Differences in Time Length
 
 def fit_locdisp_mlfp_difflength(eps,
                                 p,
@@ -292,35 +338,18 @@ def fit_locdisp_mlfp_difflength(eps,
     return 
 
 # %% Mean Shrinkage
-
 ### James Stein
 
 
 # %% Covariance Shrinkage
 
-### Spektrum 
+### Spectrum (LW)
 
+### RMT
 
-# %% Combined Functions
+### Glasso
 
-def mlfp_wrapper(eps, *, 
-                 p = None, 
-                 nu_min = 4,
-                 nu_max = 100, 
-                 threshold = 1e-3, 
-                 maxiter = 1000, 
-                 print_iter = False):
-
-    if missing data ->:
-        
-    
-
-
-
-
-
-
-    return None
+### Factor Analysis    
 
 
 
@@ -328,9 +357,20 @@ def mlfp_wrapper(eps, *,
 
 
 
+# %% Combined Approach
+'''
+https://www.arpm.co/lab/combining-estimation-techniques.html
+
+James stein -> Forcasts von andren häusern?
+'''
 
 
 
+
+# %% Evaluation - Estimation / Decision Theory
+'''
+https://www.arpm.co/lab/estimation-assessment.html#x166-84700027.1
+'''
 
 
 
