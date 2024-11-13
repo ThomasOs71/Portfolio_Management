@@ -3,6 +3,15 @@
 Created on Mon Oct 28 19:02:05 2024
 
 @author: Thomas
+
+Offene Punkte:
+    1) BL -> Individual Confidence Levels -> NivhtSymmetrische Sigma^2 View -> Einfluss auf sonst was?
+    2) Lösung für Lambda
+    3) Tau anders machen? -> siehe 4
+    4) Statt 1/tau -> Vorgefertige Covariance of Prior Mean über Estimation Theory bzw. MC? 
+       im Code sollte das einfach machbar sein über Conditioning: https://www.arpm.co/lab/bl-post-dib.html#x1259-310400070.3
+    5) COde nochmal umändern um die Möglichkeit einer eigenen Cov_Prior zu geben!
+
 """
 from numpy import arange, array, diag, exp, eye, log, sqrt, sum, zeros
 from numpy.linalg import eig, solve, inv
@@ -17,16 +26,35 @@ from IPython.display import display, Math
 
 
 # %% Bayesian Approaches
+'''
+Bayesian Approaches
+1) Normal Inverse Wishart
+2) Black-Litterman
+'''
+### Normal-Inverse Wishart
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ### Black Litterman
 '''
 Tests für k = 1 und k > 1
 '''
 
-def implied_equilibirum_returns(cov_hat_r: "np.array(n,n)",
-                                weights: "np.array(n,1)",
-                                lam: int = 1,
-                                cov_bm: "np.array(n,1)" = None):
+def bl_implied_equilibirum_returns(cov_hat_r: "np.array(n,n)",
+                                   weights: "np.array(n,1)",
+                                   lam: int = 1,
+                                   cov_bm: "np.array(n,1)" = None):
     '''
     Aim:
         Calculates the Implied Equilibirum Returns
@@ -48,12 +76,12 @@ def implied_equilibirum_returns(cov_hat_r: "np.array(n,n)",
         - Annahmen: Basiert auf MV Optimisation (s. Herleitung)
     '''
     if cov_bm is None:
-        ret_eq = lam*cov_hat_r@w.squeeze()
+        ret_eq = lam*cov_hat_r@weights.squeeze()
     
     if cov_bm is not None:
-        ret_eq = lam * (cov_hat_r@w.squeeze() - cov_bm)
+        ret_eq = lam * (cov_hat_r@weights.squeeze() - cov_bm)
     
-    return ret_eq
+    return ret_eq.reshape(len(ret_eq),1)
 
 
 def bl_prior_distribution(mu_r_equil: "np.array(n,1)",
@@ -76,8 +104,7 @@ def bl_prior_distribution(mu_r_equil: "np.array(n,1)",
     mu_m_pri = mu_r_equil  # Expected Value for Prior Mean
     cov_m_pri = (1/tau)*cov_hat_r  # Uncertainty on the Prior Mean    
 
-    return (mu_m_pri, cov_m_pri)
-
+    return (mu_m_pri.reshape(len(mu_r_equil),1), cov_m_pri)
 
 def bl_prior_predictive_performance_distribution(mu_r_equil: "np.array(n,1)",
                                                  cov_hat_r: "np.array(n,n)",
@@ -99,7 +126,9 @@ def bl_prior_predictive_performance_distribution(mu_r_equil: "np.array(n,1)",
    
     '''    
     ### Parameters of Prior Expected Value Distribution M
-    mu_m_pri, cov_m_pri = bl_prior_distribution(mu_r_equil, cov_hat_r, tau)
+    mu_prior = bl_prior_distribution(mu_r_equil, cov_hat_r, tau)
+    mu_m_pri = mu_prior[0]
+    cov_m_pri = mu_prior[1]
     
     ### Parameters of Prior Performance Model for Returns     
     mu_pri_pred_r = mu_r_equil  # Expected Return of Prior Returns
@@ -131,6 +160,10 @@ def bl_views(v: "np.array(k,n)",
         - mu_m_pri ist in BL identisch zu den equilibrium returns (mu_r_equil),
           aus Gründen der Klarheit so benamt.
     '''
+    ### Reset Dimensions
+    if eta.ndim > 1:
+        eta = eta.squeeze()
+    
     ### Extract prior_mean_dist
     mu_m_pri = prior_mean_dist[0]
     cov_m_pri = prior_mean_dist[1]
@@ -139,7 +172,12 @@ def bl_views(v: "np.array(k,n)",
     cov_pri_pred_r = prior_pred_dist[1]
     
     ### Aktive Views
-    views = v @ mu_m_pri + eta * sqrt(diag(v @ cov_pri_pred_r @ v.T))  
+    views = v @ mu_m_pri + (eta * sqrt(diag(v @ cov_pri_pred_r @ v.T))).reshape(len(eta),1)  
+       
+    
+    '''
+    Das hier wird riesig..., aber das sollte richtig sein!
+    '''
     # cv_pri_pred_r = sigma2_hat_r + sigma2_m_pri [Beide QUellen von Unsicherheit: Allgemeine + Schätzunsicherheit]
 
     ### Uncertainty in View     
@@ -278,7 +316,7 @@ def bl_posterior_distribution(prior_mean_dist: "tuple(mean,cov)",
     mu_m_pri = prior_mean_dist[0]
 
     # posterior expectation
-    mu_m_pos = mu_m_pri + (1/tau)*cov_hat_r@v.T@solve((1/tau)*v@cov_hat_r@v.T + sigma2_view,views - v@mu_m_pri)
+    mu_m_pos = mu_m_pri + (1/tau)*cov_hat_r@v.T@solve((1/tau)*v@cov_hat_r@v.T + sigma2_view,views - (v@mu_m_pri).reshape(len(v),1))
 
     # posterior covarinace
     cov_m_pos = (1/tau)*cov_hat_r - (1/tau)*cov_hat_r@v.T@solve((1/tau)*v@cov_hat_r@v.T + sigma2_view,(1/tau)*v@cov_hat_r)
@@ -300,11 +338,11 @@ def bl_posterior_predictive_performance_distribution(pos_mean_dist: "tuple(mean,
         pos_pred_dist: tuple, Parameter der Posterior Predictive Return Distribution 
         
     '''                                                     
-    e_pos_pred = mu_m_pos  # posterior predictive expectation
-    print('e_pos_pred =', e_pos_pred.round(5))
+    e_pos_pred = pos_mean_dist[0]  # posterior predictive expectation
+    # print('e_pos_pred =', e_pos_pred.round(5))
 
-    cv_pos_pred = cov_m_pos + cov_hat_r  # posterior predictive covariance
-    print('cv_pos_pred \n', cv_pos_pred.round(5))
+    cv_pos_pred = pos_mean_dist[1] + cov_hat_r  # posterior predictive covariance
+    # print('cv_pos_pred \n', cv_pos_pred.round(5))
 
     return (e_pos_pred, cv_pos_pred)
 
@@ -323,10 +361,78 @@ def bl_view_agressiveness(pos_pred_dist,
     return
 
 
+def bl_implied_equilibirum_returns_mre():
+    return None
+
+
+
+def bl_original_wrapper(weights_,
+                        lam_,
+                        cov_,
+                        tau_,
+                        v_,
+                        eta_,
+                        c_):
+    
+    
+    # Implied Returns
+    
+    mu_r_equil_ = bl_implied_equilibirum_returns(cov_,  
+                                                 weights_,
+                                                 lam = lam_)
+    
+    # Prior
+    pri_mu_ = bl_prior_distribution(mu_r_equil_,
+                                   cov_,
+                                   tau_)
+    # Prior Pred
+    pri_pred_ = bl_prior_predictive_performance_distribution(mu_r_equil_,
+                                                            cov_,
+                                                            tau_)
+    
+    # Views
+    # View Distribution
+    views_ = bl_views(v_,
+                      eta_,
+                      c_,
+                      pri_mu_,
+                      pri_pred_)
+
+    # Check
+    '''
+    bl_check_views(v_, 
+                   views_[1], 
+                   pri_mu_)
+    '''
+    
+    ## Posterior
+    # Posterior Mean Distribution
+    pos_mu_ = bl_posterior_distribution(pri_mu_, 
+                                               views_[0], 
+                                               views_[1], 
+                                               v_, 
+                                               cov_, 
+                                               tau_)
+
+    ## Predictive Distribution
+    pos_pred_ = bl_posterior_predictive_performance_distribution(pos_mu_, 
+                                                                 cov_)
+    
+    return pos_pred_
+    
+
+
+
+
+
+
+
+
+
 
 '''
 Test Daten
-'''
+
 
 ### Data
 cov = np.array([[1,0.2,0.1],
@@ -360,8 +466,7 @@ d = (1 -c)/c
 
 
 
-
-
+'''
 
 
 
@@ -374,6 +479,30 @@ d = (1 -c)/c
 how to set the risk aversion parameter?
 Roncalli...per Sharpe Ratio... aber woher nehmen wir die?
 '''
+
+# %% Entopy Pooling
+
+### Analytical
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 # %% Partial Sample Regression
