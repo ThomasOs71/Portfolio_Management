@@ -226,3 +226,11 @@ w_msn_t_frob = np.linalg.norm(w_msn_t - w_msn_true,axis=1)
 
 ### Graphs
 ## To Do
+w_msn_sample_frob
+
+# Standardizierung duech Beobachtung 
+
+
+(w_msn_t - w_msn_true).mean(axis=1)
+a = np.sqrt(np.diag(np.cov(w_msn_t - w_msn_true)))
+(w_msn_sample - w_msn_true).mean(axis=1)

@@ -6,12 +6,18 @@ Created on Mon Oct 28 19:02:05 2024
 
 Offene Punkte:
     1) BL -> Individual Confidence Levels -> NivhtSymmetrische Sigma^2 View -> Einfluss auf sonst was?
-    2) Lösung für Lambda
-    3) Tau anders machen? -> siehe 4
-    4) Statt 1/tau -> Vorgefertige Covariance of Prior Mean über Estimation Theory bzw. MC? 
-       im Code sollte das einfach machbar sein über Conditioning: https://www.arpm.co/lab/bl-post-dib.html#x1259-310400070.3
-    5) COde nochmal umändern um die Möglichkeit einer eigenen Cov_Prior zu geben!
+        2) Lösung für Lambda
+        3) Tau anders machen? -> siehe 4
+        4) Statt 1/tau -> Vorgefertige Covariance of Prior Mean über Estimation Theory bzw. MC? 
+           im Code sollte das einfach machbar sein über Conditioning: https://www.arpm.co/lab/bl-post-dib.html#x1259-310400070.3
+           5) COde nochmal umändern um die Möglichkeit einer eigenen Cov_Prior zu geben! -> s. Auch Roncalli
 
+    2) NIW -> View in Sigma_Sample / Mu_Sample einfügen
+            -> Das geht noch allgemeiner indem die Varianz von Mu_Prior und Sigma_Prior separat baubar sind
+            -> Dsa sollte noch mit qualitativen Views verbessert werden, sonst ergeben sich extremgewichte
+            -> Am besten über Entropy... oder hier irgendwie mit BL Ansätzen um Views aufzunehmen
+    
+    
 """
 from numpy import arange, array, diag, exp, eye, log, sqrt, sum, zeros
 from numpy.linalg import eig, solve, inv
@@ -32,12 +38,111 @@ Bayesian Approaches
 2) Black-Litterman
 '''
 ### Normal-Inverse Wishart
+def niw_posterior(mu_pri: "np.array(n,1)",
+                  sigma2_pri: "np.array(n,n)",
+                  mu_sample: "np.array(n,1)",
+                  sigma2_sample: "np.array(n,n)",
+                  t_pri: int,
+                  v_pri: int,
+                  t_bar: int) -> dict:
+    '''
+    Ziel
+
+    Input:
+        mu_pri : Mean_Prior"np.array(n,1)"
+        
+        sigma2_pri : "np.array(n,n)"
+            DESCRIPTION.
+            mu_sample : "np.array(n,1)"
+            DESCRIPTION.
+            sigma2_sample : "np.array(n,n)"
+            DESCRIPTION.
+    t_pri : int
+            DESCRIPTION.
+            v_pri : int
+                DESCRIPTION.
+                t_bar : int
+                DESCRIPTION.
+
+    Returns
+    -------
+    dict
+        DESCRIPTION.
+
+    '''
+    # Confidence Prior
+    g_mu = (t_pri)/(t_pri + t_bar)  # Confidence Mu Prior 
+    g_sigma2 = (v_pri)/(v_pri + t_bar)  # Confidence Sigma2 Prior              
+    
+    # Mu_Posterior                 
+    mu_pos = g_mu * mu_pri + (1 - g_mu) * mu_sample
+    
+    # Sigma_Posterior
+    sigma2_pos = g_sigma2 * sigma2_pri + (1 - g_sigma2) * sigma2_sample  \
+        + (1-g_mu) * (1- g_sigma2) * (mu_pri - mu_sample)@(mu_pri - mu_sample).T 
+        
+    # Confidence Posterior
+    t_pos = t_pri + t_bar
+    v_pos = v_pri + t_bar
+
+    return dict({"mu_pos": mu_pos, 
+                "sigma2_pos":sigma2_pos,
+                 "t_pos":t_pos,
+                 "v_pos":v_pos})
+    
+def niw_predictive_posterior(mu_pos,
+                             sigma2_pos,
+                             v_pos,
+                             t_pos):
+    '''
+    
+    '''
+    # Mu der Predictive Posterior Distribution für r_t
+    r_mu_pred_pos = mu_pos
+    # Sigma_2 der Predictive Posterior Distribution für r_t
+    r_sigma2_pred_pos = ((t_pos + 1) / t_pos) * sigma2_pos
+    '''
+    Achtung: Das hier ist ungleich Covariance, weil Pred. Pos. Distribution Student t ist
+    '''
+    r_nu_pred_pos = v_pos
+    
+    return dict({"r_mu": r_mu_pred_pos, 
+                "r_sigma2":r_sigma2_pred_pos,
+                "r_nu":r_nu_pred_pos})
 
 
+def niw_bayesian_allocation(prior,
+                            sample,
+                            t_pri,
+                            v_pri,
+                            t_bar,
+                            lam):
+    '''
+    Aktuell ohne Weight Einschränkung
+    '''
+    # Extract
+    mu_pri = prior["mu_pri"]
+    sigma2_pri = prior["sigma2_pri"]
+    mu_sample = sample["mu_sample"]
+    sigma2_sample = sample["sigma2_sample"]
+    
+    # Calculate Weights (Determine amount of Shrinkage towards Prior)
+    g_mu = (t_pri)/(t_pri + t_bar)
+    g_sigma2 = (v_pri)/(v_pri + t_bar)
+    k = lam/(2*(1 - lam)) * (t_bar - 2 * ( 1 - g_sigma2))/(t_bar + (1-g_mu))
 
-
-
-
+    kappa = lam/(2*(1 - lam))*(t_bar - 2*(1 - g_sigma2))/(t_bar + (1 - g_mu))
+    # Define Parameter (not fully equal to Parameter of Pred. Posterior Dist)
+    mu = g_mu * mu_pri + (1 - g_mu) * mu_sample
+    
+    # Sigma_Posterior
+    sigma2 = g_sigma2 * sigma2_pri + (1 - g_sigma2) * sigma2_sample  \
+        + (1-g_mu) * (1- g_sigma2) * (mu_pri - mu_sample)@(mu_pri - mu_sample).T  
+    
+    w_bayes = k * np.linalg.inv(sigma2) @ mu
+    
+    return w_bayes
+    
 
 
 
@@ -106,6 +211,8 @@ def bl_prior_distribution(mu_r_equil: "np.array(n,1)",
 
     return (mu_m_pri.reshape(len(mu_r_equil),1), cov_m_pri)
 
+
+
 def bl_prior_predictive_performance_distribution(mu_r_equil: "np.array(n,1)",
                                                  cov_hat_r: "np.array(n,n)",
                                                  tau: "int"):
@@ -135,6 +242,7 @@ def bl_prior_predictive_performance_distribution(mu_r_equil: "np.array(n,1)",
     cov_pri_pred_r = cov_hat_r + cov_m_pri  # Covariance of Prior Returns
 
     return (mu_pri_pred_r, cov_pri_pred_r)    
+
 
 
 def bl_views(v: "np.array(k,n)",
@@ -186,6 +294,7 @@ def bl_views(v: "np.array(k,n)",
     Bei verschiedenen Confidences...Symmetrie der Covariance weg! [Schlimm? Lässt sich das umgehen? Effekte für Interpretation Eff_Rank]
     '''
     return (views.reshape(-1,1)), np.atleast_2d(sigma2_view)
+
 
 
 def bl_check_views(v:"np.array(k,n)",
@@ -248,6 +357,7 @@ def bl_check_views(v:"np.array(k,n)",
         print(f"Effective Rank {np.round(eff_rank_views,2)} < {np.round(alpha,2)}: Views zu extrem / nicht ausreichend unabhängig voneinander")
 
     return None
+
 
 
 def bl_view_explanation(v: "np.array(k,n)",
@@ -324,6 +434,7 @@ def bl_posterior_distribution(prior_mean_dist: "tuple(mean,cov)",
     return (mu_m_pos, cov_m_pos)
 
 
+
 def bl_posterior_predictive_performance_distribution(pos_mean_dist: "tuple(mean,cov)",
                                                      cov_hat_r: "np.array(n,n)") -> tuple:
     '''
@@ -359,6 +470,7 @@ def bl_view_agressiveness(pos_pred_dist,
     
     gradient_d_kl = v@(mu_pos_pred - mu_pri_pred)@inv(v@cv_pri_pred@v.T)  # gradient of relative entropy
     return
+
 
 
 def bl_implied_equilibirum_returns_mre():
