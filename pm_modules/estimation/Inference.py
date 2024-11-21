@@ -16,7 +16,7 @@ Offene Punkte:
             -> Das geht noch allgemeiner indem die Varianz von Mu_Prior und Sigma_Prior separat baubar sind
             -> Dsa sollte noch mit qualitativen Views verbessert werden, sonst ergeben sich extremgewichte
             -> Am besten über Entropy... oder hier irgendwie mit BL Ansätzen um Views aufzunehmen
-    
+            -> Optimize over Parameter gamma to find optimal Gamma for the usecase!
     
 """
 from numpy import arange, array, diag, exp, eye, log, sqrt, sum, zeros
@@ -26,9 +26,52 @@ from pandas import read_csv
 import numpy as np
 from IPython.display import display, Math
 
-# %% Minimum Relative Entropy
+from pm_modules.support import *
+
+# %% Entropy Pooling
+'''
+Generalization des Bayesian Updating
+'''
 
 
+def entropy_pooling():
+    return None
+
+
+def entropy_pooling_interface():
+    return None
+
+
+def entropy_pooling_sequential():
+    return None    
+    
+
+def relative_entropy(p):
+    p = np.zeros((10,1))
+    p[1,0] = 5
+
+    a = p == 0
+    p[a] = 2
+    
+    # wie gehe ich mit den nullern um? EInfach rauskicken?
+    
+    return None
+
+
+def effective_number_of_scenarios(p_):
+    return np.exp(-relative_entopy(p_))
+
+
+def entropy_pooling_agg_unc_additive():
+    return None
+
+
+def entropy_pooling_agg_unc_multiplicative():
+    return None
+
+
+def entropy_pooling_check_posterior_moments()
+    return None
 
 
 # %% Bayesian Approaches

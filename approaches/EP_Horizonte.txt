@@ -1,0 +1,3 @@
+! Bei MonteCarlo über I Instrumente x S Simulations x H Periods {1,...,h} -> VIews on spezific Horizonts
+
+z.B. Path: Value over 6 Month and Value over 12 Month

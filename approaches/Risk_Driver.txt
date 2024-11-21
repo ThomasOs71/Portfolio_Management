@@ -1,0 +1,3 @@
+Es ist auch völlig in Ordnung in Bayesian Approach (oder EP) Die Risk Driver zu verwenden.
+
+Anschließend muss allerdings das Ergebnis noch dem Repricing Step unterzogen werden.

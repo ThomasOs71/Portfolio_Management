@@ -352,11 +352,6 @@ def fit_locdisp_mlfp_difflength(eps,
 ### Factor Analysis    
 
 
-
-
-
-
-
 # %% Combined Approach
 '''
 https://www.arpm.co/lab/combining-estimation-techniques.html

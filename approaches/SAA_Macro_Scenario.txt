@@ -7,7 +7,8 @@
 
 [ Zusatz 2b: -> GGf. über Einfluss auf die Ökonomie und Faktormodelle gehen]
 
-4) Generate Asset Class Joint Distribution
+4) Generate Asset Class Joint Distribution [Dann über alle States... muss auch Correlationseffecte behinhalten,
+S. ANtons Buch CHapter 1)
 
 5) Generate Bayesian Approach to Shrinke results against "Normal World"
 
