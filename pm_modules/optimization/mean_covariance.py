@@ -18,6 +18,11 @@ Optimierung auf Absolut Risk?
 Constraints auf Tracking Error
 Max. Active Positions
 
+Ridge und Lasso in Static und Dynamic From
+
+Static Lambda*|x|
+Dynamic Lambda*|x-x0|
+
 
 '''
 
