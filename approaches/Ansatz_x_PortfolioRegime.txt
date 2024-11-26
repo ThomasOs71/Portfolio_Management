@@ -1,0 +1,14 @@
+Aufbau von x Portfolios:
+- Jedes Portfolio spiegelt einen Kernview wieder (z.B. für die Kernassetklasse e.g. Aktien)
+- Optimierung basierend auf dem View
+	Jedes PF mit eigener Covariance und Mean, als ob der View Safe wäre
+
+Gewichtung der Portfolio zu einer Portfolio (oder Parameterlandschaft: Mean und Covariance) über:
+1) Portfolio der Regime
+2) Wahrscheinlichkeit der Regime
+
+-> = Aggregation über Regime
+
+Optimierung:
+-> UNconditional (d.h. ohne Berücksichitugn des aktuellen PF)
+-> COnditional (d.h. MIT Berücksichitung des aktuellen PF oder des Legacy PF / Benchmark ALlocation)

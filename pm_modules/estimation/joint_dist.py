@@ -343,9 +343,11 @@ def fit_locdisp_mlfp_difflength(eps,
 
 # %% Covariance Shrinkage
 
-### Spectrum (LW)
+### Denoising
 
-### RMT
+
+
+### Spectrum (LW)
 
 ### Glasso
 
