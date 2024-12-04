@@ -56,6 +56,15 @@ def loc_disp_fp(eps: "np.array(t,n)",
 def mahab_distance():
     return None
 
+def data_moments(data):
+    
+    
+    
+    
+    
+    return None
+
+
 
 # %% Robust Optimzation - Student t
 

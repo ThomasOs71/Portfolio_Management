@@ -10,40 +10,53 @@ import numpy as np
 import pandas as pd
 import scipy.linalg as lg
 
-
 # %% PF-Optimierungen
 '''
-Was brauche ich?
+Wesentliche Parameter:
+    
+    1) Absolut Risk Aversion
+        - Objective Function
+        - Constraint (QPQC / SOC)
+        
+    2) Relative Risk Aversion (BM)
+        - Objective Function
+        - Einbeziehung der as Penality in Obj. Funktion (Lamda_B: Aversion to Tracking Error)
+        - Constraint (QPQC / SOC)
+        
+    3) Return:
+        - Objective Function
+        - Constraint (Linear)
+        
+    5) Inclusion of External Information:
+        - Sector / Factor / Regional Exposure
+        - Membership to Assetclass
+        - etc.
+    
+    6) Modelling of Max. Number of Active Positions
 
-Optimierung auf Absolut Risk?
-Constraints auf Tracking Error
-Max. Active Positions
+    ... Was noch?
+    
+    
+[0, 0, 1, 0, 0] @ x = 0.2
+    
+       
+    
+Optionale Faktoren:
+    1) Einbeziehung von Transaktionskosten
+        - Heuristic Routine (ARPM)
+        - Einbeziehung der TK as Penality in Obj. Funktion (Lamda_A: Aversion to Turnover)
 
-Ridge und Lasso in Static und Dynamic From
 
-Static Lambda*|x|
-Dynamic Lambda*|x-x0|
-
+Notiz:
+    1) Ridge und Lasso in Static und Dynamic From
+        Static Lambda*|x|
+        Dynamic Lambda*|x-x0| -> Y in Arpm
 
 '''
 
 
 
-# -> ggf. primär Risk Folio nutzen
+# -> ggf. primär Risk Folio nutzen für CVaR
 
+# %% Estimation Theory: Bayes Action and Decision Framework
 
-a = np.array([0.2,0.3,0.4,0.6]).reshape(-1,1)
-
-b = a@a.T
-
-a.T == a
-
-a = lg.sqrtm(b).real
-
-a.T == a
-
-n = np.array(range(1,5+1))
-b = np.array([1,3])
-
-np.setdiff1d(n,b)
-b = np.zeros((1,3))

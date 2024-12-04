@@ -161,6 +161,13 @@ def risk_driver_fe_nelson_siegel(ytm,
     return y_ns
 
 
+
+def risk_driver_fe_nelson_siegel_2_yc():
+    return None
+
+
+
+
 def risk_driver_fe_credit_risk(ytm_credit,
                                ytm_credit_grid,
                                ytm_riskfree,
@@ -173,15 +180,15 @@ def risk_driver_fe_credit_risk(ytm_credit,
     S_t(tau) = Y_t(tau) - Y_t^(ref)(tau)
     '''
     ### Berechnung von Y_t^(ref)(tau)
-    if yc_method == "Shadow_Rates": -> Macht das überhaupt hier sinn?
+    if yc_method == "Shadow_Rates": # -> Macht das überhaupt hier sinn?
         pass
     elif yc_method == "Nelson_Siegel":
         pass
     elif yc_method == "Log_YTM":
         pass
     else:
-        raise ValueError("Eine bekannte Function für yc_method.").
-        
+        raise ValueError("Eine bekannte Function für yc_method.")
+    '''    
     ### Berechnung von Credit über S_t(tau) = Y_t(tau) - Y_t^(ref)(tau)
     1. relevante ytm_riskfree determinieren
     2. Spread errechnen als difference
@@ -192,6 +199,7 @@ def risk_driver_fe_credit_risk(ytm_credit,
         return np.log(spread_t), np
     
     # Berechnung der Credit Spreads aus den Daten
+    '''
     return None
 
 
@@ -225,6 +233,32 @@ def risk_driver_fx(total_return_index: "np.array"):
 '''
 Was machen wir bei Commodity ETF
 '''
+
+
+### Risk Driver Testing Routine
+
+def risk_driver_missing_values():
+    return None
+
+
+def risk_driver_outlier():
+    return None
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 # %% Step 3-I: Quest for Invariance

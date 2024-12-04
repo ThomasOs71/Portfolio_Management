@@ -12,11 +12,21 @@ Umfang:
 
 import numpy as np
 
-a = np.ones(4)
 
-def check_dim_2d(array: "np.array"):
-    if a.ndim == 2:
+
+# %%
+
+def check_dim_2d(array: np.ndarray):
+    if array.ndim == 2:
         return True
     else:
         return False
 
+
+
+
+
+def test_data():
+    # generates test data
+    
+    return None

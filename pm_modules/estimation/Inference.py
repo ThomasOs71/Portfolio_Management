@@ -23,54 +23,431 @@ from numpy import arange, array, diag, exp, eye, log, sqrt, sum, zeros
 from numpy.linalg import eig, solve, inv
 from pandas import read_csv
 
+from scipy.optimize import minimize, Bounds
+from typing import Tuple
 import numpy as np
 from IPython.display import display, Math
 
-from pm_modules.support import *
+from scipy.special import logsumexp
+from scipy.sparse import eye as eye2
+from statsmodels.stats.weightstats import DescrStatsW
+
+from pm_modules.support import check_dim_2d
 
 # %% Entropy Pooling
 '''
 Generalization des Bayesian Updating
 '''
 
-
-def entropy_pooling():
-    return None
+# TODO: Vergleich der beiden EP Ansätze -> ARPM vs FT
 
 
-def entropy_pooling_interface():
-    return None
+
+def entropy_pooling_arpm(p_pri, 
+                         z_ineq=None, mu_view_ineq=None, 
+                         z_eq=None, mu_view_eq=None, 
+                         normalize=True):
+    
+    """This function minimizes the relative entropy subject to inequality and equality constraints 
+       and returns the updated probabilities
+
+    Note
+    ----
+        The constraints :math:`p_j \geq 0` and :math:`\sum p_j = 1` are set automatically.
+
+    Parameters
+    ----------
+        p_pri : array, shape(j_bar,)
+        z_ineq : array, shape(l_bar, j_bar), optional
+        mu_view_ineq : array, shape(l_bar,), optional
+        z_eq : array, shape(m_bar, j_bar), optional
+        mu_view_eq : array, shape(m_bar,), optional
+        normalize : bool, optional
+
+    Returns
+    -------
+        p_bar : array, shape(j_bar,)
+    """
+
+    # if there is no constraint, then just return p_pri
+    if z_ineq is None and z_eq is None:
+        return p_pri
+    # no inequality constraints
+    elif z_ineq is None:
+        z = z_eq
+        mu_view = mu_view_eq
+        l_bar = 0
+        m_bar = len(mu_view_eq)
+    # no equality constraints
+    elif z_eq is None:
+        z = z_ineq
+        mu_view = mu_view_ineq
+        l_bar = len(mu_view_ineq)
+        m_bar = 0
+    else:
+        # concatenate constraints
+        z = np.concatenate((z_ineq, z_eq), axis=0)
+        mu_view = np.concatenate((mu_view_ineq, mu_view_eq), axis=0)
+        l_bar = len(mu_view_ineq)
+        m_bar = len(mu_view_eq)
+        
+    # normalize constraints
+    if normalize is True:
+        m_z = DescrStatsW(z.T).mean 
+        s2_z = DescrStatsW(z.T).cov 
+        s_z = np.sqrt(np.diag(s2_z))
+        z = ((z.T - m_z)/s_z).T
+        mu_view = (mu_view - m_z)/s_z
+
+    # pdf of a discrete exponential family
+    def exp_family(theta):
+        x = theta@z + np.log(p_pri)
+        phi = logsumexp(x)
+        p = np.exp(x - phi)
+        p[p < 1e-32] = 1e-32
+        p = p/np.sum(p)
+        return p
+
+    # minus dual Lagrangian
+    def lagrangian(theta):
+        x = theta@z + np.log(p_pri)
+        phi = logsumexp(x)  # stable computation of log sum exp
+        return phi - theta@mu_view
+
+    def gradient(theta):
+        return z@exp_family(theta) - mu_view
+
+    def hessian(theta):
+        p = exp_family(theta)
+        z_bar = z.T - z@p
+        return (z_bar.T*p)@z_bar
+
+    # compute optimal lagrange multipliers and posterior probabilities
+    k_bar = l_bar + m_bar  # dimension of lagrange dual problem
+    theta0 = np.zeros(k_bar)  # intial value
+    # if no constraints, then perform newton conjugate gradient
+    # trust-region algorithm
+    if l_bar == 0:
+        options = {'gtol': 1e-10}
+        res = minimize(lagrangian, theta0, method='trust-ncg', jac=gradient, hess=hessian, options=options)
+    # otherwise perform sequential least squares programming
+    else:
+        options = {'ftol': 1e-10, 'disp': False, 'maxiter': 1000}
+        alpha = -eye2(l_bar, k_bar)
+        constraints = {'type': 'ineq', 'fun': lambda theta: alpha@theta}
+        res = minimize(lagrangian, theta0, method='SLSQP', jac=gradient, constraints=constraints, options=options)
+
+    return np.squeeze(exp_family(res['x']))
+
+
+def entropy_pooling_ft(
+        p: np.ndarray, 
+        A: np.ndarray, b: np.ndarray, 
+        G: np.ndarray = None, h: np.ndarray = None, 
+        method: str = None) -> np.ndarray:
+    '''
+    Ziel:
+        Generierung von Posterior Probabiliies basierend auf (linear) Views / Constraints
+        Verwendet Kullback-Leibler (relative Entropy) zur Minimierung des Abstand zwischen p und q
+        und gleichzeitigter Erfüllung der Constraints
+
+    Parameters
+    ----------
+        p : np.ndarray (S,1), Prior Probability Vector
+        A : np.ndarray (C,S), Equality Constraint Matrix
+        b : np.ndarray (C,1), Equality Constraint (Value) Vector
+        G : np.ndarray, (D,S) Inequality Constraint Matrix 
+        h : np.ndarray, (D,1) Inequality Constraint (Value) Vector
+        method : str, Optimization Method {'TNC', 'L-BFGS-B'}
+
+    Returns
+    -------
+        Posterior Probability Vector q with Shape (S,1)
+    '''
+    
+    # Determine Method of Optimization
+    if method is None:
+        method = 'TNC'
+    elif method not in ('TNC', 'L-BFGS-B'):
+        raise ValueError(f'Method {method} is not supported. Choose TNC or L-BFGS-B')
+    
+    # Constraints Building
+    len_b = len(b)  # Number of Equality Constraints
+    
+    if G is None:  # Wenn keine Inequality Views // Equality Views immer vorhanden über Sum q = 1
+        lhs = A
+        rhs = b
+        bounds = Bounds([-np.inf] * len_b, [np.inf] * len_b)  # No Limits in Optimization
+    
+    else:  # Wenn Inequality Views vorhanden, dann Stacking der Constraints
+        lhs = np.vstack((A, G))
+        rhs = np.vstack((b, h))
+        len_h = len(h)  # Number of Inequality Constraints
+        bounds = Bounds([-np.inf] * len_b + [0] * len_h, [np.inf] * (len_b + len_h))
+    
+    log_p = np.log(p)
+    
+    dual_solution = minimize(
+            _dual_objective, 
+            x0 = np.zeros(lhs.shape[0]),
+            args = (log_p, lhs, rhs),  # Fixed Parameters
+            method = method,
+            jac = True, # Determines that the obj. function is supposed to return 1) Objective and 2) Gradient
+            bounds = bounds,
+            options = {'maxfun': 10000})
+    
+    q = np.exp(log_p - 1 - lhs.T @ dual_solution.x[:,np.newaxis])
+    
+    return q
+
+def _dual_objective(
+        lagrange_multipliers: np.ndarray, log_p: np.ndarray,
+        lhs: np.ndarray, rhs: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    '''
+    Ziel:
+        Berechnet Entropy Pooling Dual Objective and Gradienten
+    
+    Args:
+        Lagrange_multipliers: Lagrange multipliers with shape (M, ) or (M + N, ).
+        log_p: Log of prior probability vector with shape (S, 1)
+        lhs: Matrix with shape (M, S) or (M + N, S)
+        rhs: Vector with shape (M, 1) or (M + N, 1)
+    
+    Returns:
+        Dual Objective Value and Gradient
+        
+    '''    
+    lagrange_multipliers = lagrange_multipliers[:, np.newaxis]
+    log_x = log_p - 1 - lhs.T @ lagrange_multipliers
+    x = np.exp(log_x)
+    gradient = rhs - lhs @ x
+    objective = x.T @ (log_x - log_p) - lagrange_multipliers.T @ gradient
+    return - 1000 * objective, 1000 * gradient
+
+
+def entropy_pooling_implicit_view_replacement(
+        R: np.ndarray, p: np.ndarray, # ggf. auch q <- nochmal drüber nachdenken
+        view_level: list, view_variable: list, grid: np.ndarray,    # Maximal 3
+        A_old: np.ndarray, b_old: np.ndarray, 
+        G_old: np.ndarray, h_old:np.ndarray,) -> tuple(np.ndarray, tuple, dict):
+
+    '''
+    Ziel:
+        Grid-Search für bessere Views, die im Sequential or Original EP gesetzt werden mussten.
+        Bewertung des "besten" Ersatzview sets durch relative Entropy / ENS
+        
+    Parameter:
+        R: np.ndarray(S,n), Risk Factors
+        p: np.ndarray(S,1), prior probabilities
+        view_level: list(p), Liste der View Category 
+            (1 = Mean, 2 = Variance, 3 = Kurtosis, 4 = Skewness, v = var)
+        view_variable: list(p), Liste der Variablen zu den Views in view_level
+        grid: np.ndarray(p,2), Min und Max Level jeden implicit Views
+        A_old : np.ndarray (C,S), Equality Constraint Matrix
+        b_old : np.ndarray (C,1), Equality Constraint (Value) Vector
+        G_old : np.ndarray, (D,S) Inequality Constraint Matrix 
+        h_old : np.ndarray, (D,1) Inequality Constraint (Value) Vector
+        
+    Return:
+        tuple: (np.ndarray(S,1))    
+    
+    Notes:
+  
+    
+    '''
+    from itertools import product
+    
+    
+    len_p = len(view_level)
+    grid_size = 100
+    
+    # Check Number of Implicit-replacble Views
+    if len_p > 3:
+        raise ValueError(f'Anzahl der Implicit-replacable Views > 3')
+    
+    grid_space = np.full((len_p,grid_size),np.nan)    
+    for i in range(0,len_p):      
+        grid_space[i,:] = np.linspace(grid[i,0],grid[i,1],100)
+
+    grid_permutation = list(product(grid_1,grid_2,grid_3))
+    
+    dict_ = {}
+    for run, i in enumerate(grid_permutation[0:1]):
+        ## Define Implicit View
+        A_new = []
+        b_new = []
+        for v in view_level:
+            # C0
+            if v == 1:
+                pass
+            if v == 2:
+                pass
+            if v == 3:
+                pass
+            if v == 4:
+                pass
+        # Update Views 
+        A_fin = np.vstack((A_old,a_new))
+        b_fin = np.vstack((b_old,b_new))        
+        
+        # Entropy Pooling with current views            
+        q = entropy_pooling_ft(p, 
+                               A_fin, b_fin,
+                               G_old, h_old)
+        
+        # Evaluate current permutation
+        ens = effective_number_of_scenarios(p, q)
+        
+        # Save current run
+        dict_.append({run:[q, ens]})
+    
+    # Evaluate best run
+    ens_best = 0  # Default Start
+    for run, i in enumerate(c.values()):
+        if i[1] > ens_best:
+            best_run = run
+            ens_best = i[1]
+
+    # Best Posterior Probability Vector
+    q_best = dict_
+    
+    return q_best, (best_run, ens_best), dict_
+
 
 
 def entropy_pooling_sequential():
     return None    
     
 
-def relative_entropy(p):
-    p = np.zeros((10,1))
-    p[1,0] = 5
-
-    a = p == 0
-    p[a] = 2
-    
+def relative_entropy(p_,q_): 
+    '''
+    Misst die View Intensity
+    '''
     # wie gehe ich mit den nullern um? EInfach rauskicken?
+    return None
+
+
+def effective_number_of_scenarios(p_, q_):
+    '''
+    Interpretation auch als "View Intensity"
+    '''
+    return np.exp(-relative_entopy(p_,q_))
+
+
+
+def entropy_pooling_agg_unc_additive(q: np.ndarray, 
+                                     p: np.ndarray, 
+                                     c: np.ndarray) -> np.ndarray :
     
+    '''
+    Ziel:
+        Aggregation der Posterior Distribution q_j basierend auf Confidence in die
+        Views bzw. deren Eintrittswahrscheinlichkeit
+    
+    Args:
+        q: np.ndarray(S,J) Matrix der Posterior Distributions
+        p: np.ndarray(S,1) Vector der Prior Distribution 
+        c: np.ndarray(J,1) Vector der Eintrittswahrscheinlihckeiten der J States
+    
+    Return:
+        q_agg: np.ndarray(S,1) Vector der Aggregierten Posterior Distribution
+        
+    Notes:
+        Jedes q_j basiert u.U. auf einem eigenen Constraint Set. In dieser Funktion
+        geht es nicht um die einzeln Constraints in einem Set, sondern um die 
+        Wahrscheinlichkeit der Constraint Sets über J Market States
+    '''
+
+    # Check Dimension of Matrix
+    for i in [q, p, c]:
+        if check_dim_2d(i) is False:
+            raise ValueError(f'{i} does not have the correct dimension')
+    
+    # Check Equality
+    assert q.shape[1] == c.shape[0], "Anzahl der States und Probability in c nicht identisch"
+
+    '''
+    p = (np.ones(100) / 100).reshape(-1,1)
+    q_1 = np.random.randint(0,2,100).reshape(-1,1)
+    q_1 = q_1 / np.sum(q_1)
+    q_2 = np.random.randint(0,2,100).reshape(-1,1)
+    q_2 = q_2 / np.sum(q_2)
+    q_3 = np.random.randint(0,2,100).reshape(-1,1)
+    q_3 = q_3 / np.sum(q_3)
+    q = np.c_[q_1,q_2,q_3]
+    c = np.array([0.2,0.4,0.3]).reshape(-1,1)
+    '''
+    
+    len_q = len(p)
+    J = q.shape[1]
+    
+    q_agg = np.full((len_q,1),0)
+    for i in range(0,J):
+        q_agg = q_agg + c[i,0] * q[:,i]
+            
+    if np.sum(c) != 1:
+        print("ungleich 1")
+        q_agg = q_agg + (1 - np.sum(c)) * p
+        
+    return q_agg
+
+
+def entropy_pooling_agg_unc_multiplicative(q: np.ndarray, 
+                                           p: np.ndarray, 
+                                           c:np.ndarray) - > np.ndarray :
+    
+    '''
+    Ziel:
+        Multiplikative Aggregation der Posterior Distribution q_j basierend auf Confidence in die
+        Views bzw. deren Eintrittswahrscheinlichkeit
+    
+    Args
+        q: np.ndarray(S,J) Matrix der Posterior Distributions
+        p: np.ndarray(S,1) Vector der Prior Distribution 
+        c: np.ndarray(J,1) Vector der Eintrittswahrscheinlihckeiten der J States
+    
+    Return
+        q_agg: np.ndarray(S,1) Vector der Aggregierten Posterior Distribution
+        
+    Notes:
+        Jedes q_j basiert u.U. auf einem eigenen Constraint Set. In dieser Funktion
+        geht es nicht um die einzeln Constraints in einem Set, sondern um die 
+        Wahrscheinlichkeit der Constraint Sets über J Market States
+    
+    '''
+
+    # Check Dimension of Matrix
+    for i in [q, p, c]:
+        if check_dim_2d(i) is False:
+            raise ValueError(f'{i} does not have the correct dimension')
+    
+    # Check Equality
+    assert q.shape[1] == c.shape[0], "Anzahl der States und Probability in c nicht identisch"
+
+    len_q = len(p)
+    J = q.shape[1]
+    
+    for i in range(0,J):
+        if i == 0:
+            q_agg = q[:,i]**c[i,0]
+        else:
+            q_agg = q_agg * q[:,i]**c[i,0]
+
+    # Reweighting TODO Testing mit ARPM Ergebnis offen -> Geht das mit der Normierung?
+    q_agg = q_agg / np.sum(q_agg)
+
+    return q_agg
+
+
+    p_bar_mult_c = 1/sum(p_bar**c*p_base**(1 - c))*p_bar**c*p_base**(1 - c)  #  multiplicative confidence-weighted probabilities
+    print('p_bar_mult_c = ', (p_bar_mult_c*100).round())
     return None
 
 
-def effective_number_of_scenarios(p_):
-    return np.exp(-relative_entopy(p_))
-
-
-def entropy_pooling_agg_unc_additive():
-    return None
-
-
-def entropy_pooling_agg_unc_multiplicative():
-    return None
-
-
-def entropy_pooling_check_posterior_moments()
+def entropy_pooling_check_posterior_moments(R, q):
+    '''
+    Nicht nötig, normale Momentanalyse sollte ausreichen
+    '''
     return None
 
 
@@ -95,17 +472,12 @@ def niw_posterior(mu_pri: "np.array(n,1)",
         mu_pri : Mean_Prior"np.array(n,1)"
         
         sigma2_pri : "np.array(n,n)"
-            DESCRIPTION.
-            mu_sample : "np.array(n,1)"
-            DESCRIPTION.
-            sigma2_sample : "np.array(n,n)"
-            DESCRIPTION.
-    t_pri : int
-            DESCRIPTION.
-            v_pri : int
-                DESCRIPTION.
-                t_bar : int
-                DESCRIPTION.
+        mu_sample : "np.array(n,1)"
+        sigma2_sample : "np.array(n,n)"
+
+        t_pri : int
+        v_pri : int
+        t_bar : int
 
     Returns
     -------
@@ -172,7 +544,7 @@ def niw_bayesian_allocation(prior,
     # Calculate Weights (Determine amount of Shrinkage towards Prior)
     g_mu = (t_pri)/(t_pri + t_bar)
     g_sigma2 = (v_pri)/(v_pri + t_bar)
-    k = lam/(2*(1 - lam)) * (t_bar - 2 * ( 1 - g_sigma2))/(t_bar + (1-g_mu))
+    k = lam/(2*(1 - lam)) * (t_bar - 2 * (1 - g_sigma2))/(t_bar + (1-g_mu))
 
     kappa = lam/(2*(1 - lam))*(t_bar - 2*(1 - g_sigma2))/(t_bar + (1 - g_mu))
     # Define Parameter (not fully equal to Parameter of Pred. Posterior Dist)

@@ -164,8 +164,16 @@ for iter_ in range(0,iterations):
     # Save Posterior
     pos_mean_array_t[:,iter_] = pos_sample_t[0].squeeze()
     pos_cov_array_t[iter_,:,:] = pos_sample_t[1]
-
     
+    
+np.std(pos_mean_array,axis=1) 
+np.std(pos_mean_array_t,axis=1) 
+
+
+pos_mean_array.mean(axis=1)
+pos_mean_array.mean(axis=1)
+
+
 ### Evaluation
 ## Cov Parameter
 # Frobenius Distance [Ist das ein gutes Measure? wie ist das zu interpretieren]
@@ -229,8 +237,6 @@ w_msn_t_frob = np.linalg.norm(w_msn_t - w_msn_true,axis=1)
 w_msn_sample_frob
 
 # Standardizierung duech Beobachtung 
-
-
 (w_msn_t - w_msn_true).mean(axis=1)
 a = np.sqrt(np.diag(np.cov(w_msn_t - w_msn_true)))
 (w_msn_sample - w_msn_true).mean(axis=1)

@@ -285,5 +285,4 @@ plt.plot(test1["EOP"]["Weight"])
 plt.plot(np.sum(test1["Turnover"], axis=1))
 plt.plot(np.sum(test1["Costs"], axis=1))
 
-
 '''
