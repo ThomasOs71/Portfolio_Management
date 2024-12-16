@@ -21,6 +21,7 @@ from cvxopt import matrix
 from matplotlib.pyplot import show, fill_between
 
 import numpy as np
+import pandas as pd
 from scipy import stats
 from scipy import special
 
@@ -58,6 +59,11 @@ def mahab_distance():
 
 def data_moments(data):
     
+    if isinstance(data,np.ndarray):
+        pass
+    
+    if isinstance(data,pd.DataFrame):
+        pass
     
     
     

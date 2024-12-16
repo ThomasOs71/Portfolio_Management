@@ -11,6 +11,14 @@ Created on Mon Nov 18 17:44:30 2024
 import numpy as np
 from scipy.optimize import minimize
 
+import numpy as np
+import pandas as pd
+from bisect import bisect_right
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+from matplotlib.ticker import FormatStrFormatter
+from schweizer_wolff import schweizer_wolff
+
 # %% Step 1: Valuation
 '''
 Brauchen wohl Funktionen für Illiquid Assets
@@ -249,18 +257,6 @@ def risk_driver_outlier():
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
 # %% Step 3-I: Quest for Invariance
 '''
 Use the Risk Drivers to:
@@ -269,21 +265,18 @@ Use the Risk Drivers to:
 -> Both can then be used to forecast the Evaluation of the Risk Drivers
     
 '''
-### Testing for IID-Ness
-def ellipsoid_invariance_test():
-    return None
-
-def kolmogorov_Smirnov_test():
-    # Zeitreihe Rein
-    # Auch für abs. Werte?
-    return None
 
 ### Step 3-Ia: Univariate Quest for Invariance
 '''
-Univariate Models for Invariants extraction
+Multivariate Models for Invariants extraction
 '''
+def random_walk_univariate():
+    # 1. IID Test
+    # 2. Estimation of Invariant Distribution
+    # hier muss definitiv das testing rein... und auch die Bestimmung über die Verteilung der Invariants
+    return None
 
-def efficiency_random_walk():
+def garch_univariate():
     # 1. IID Test
     # 2. Estimation of Invariant Distribution
     # hier muss definitiv das testing rein... und auch die Bestimmung über die Verteilung der Invariants
@@ -291,10 +284,30 @@ def efficiency_random_walk():
 
 
 
-### Step 3-Ib: Univariate Quest for Invariance
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Step 3-Ia: Univariate Quest for Invariance
 '''
-Multivariate Models for Invariants extraction
+Univariate Models for Invariants extraction
 '''
+
+
+
+
+
+
 
 
 ### Step 3-II: Testing Invariance? (Simulation Testing?)

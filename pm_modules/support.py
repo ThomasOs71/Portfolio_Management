@@ -24,8 +24,6 @@ def check_dim_2d(array: np.ndarray):
 
 
 
-
-
 def test_data():
     # generates test data
     
