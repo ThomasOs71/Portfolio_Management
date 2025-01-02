@@ -23,8 +23,20 @@ def check_dim_2d(array: np.ndarray):
         return False
 
 
+a = np.array([5,1])
+
+e = check_dim_2d(a)
+
 
 def test_data():
     # generates test data
     
     return None
+
+
+# %% Analyse der Laufzeit
+
+# Timeit
+# Cprofile
+# Ordnung (Komplexitätsordnung bestimmen)
+a =6
